@@ -7,7 +7,8 @@ import {
   ISeriesApi,
   CandlestickSeries,
   BarSeries,
-  LineSeries
+  LineSeries,
+  HistogramSeries
 } from 'lightweight-charts';
 import { 
   Lock, 
@@ -56,6 +57,7 @@ export default function PricePanel({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
+  const volumeSeriesRef = useRef<ISeriesApi<any> | null>(null);
   
   const [mode, setMode] = useState<Mode>('absolute');
   const [isLocked, setIsLocked] = useState(false);
@@ -771,6 +773,15 @@ export default function PricePanel({
       }
     });
     seriesRef.current.clear();
+    
+    // Clear volume series
+    if (volumeSeriesRef.current && chartRef.current) {
+      try {
+        chartRef.current.removeSeries(volumeSeriesRef.current);
+      } catch (error) {
+      }
+      volumeSeriesRef.current = null;
+    }
 
     // Only create series for tokens that have actual data
     let seriesCreated = 0;
@@ -837,6 +848,31 @@ export default function PricePanel({
       seriesCreated++;
     }
     
+    // Create volume series in separate pane if we have tokens
+    if (seriesCreated > 0) {
+      const volumeSeries = chartRef.current.addSeries(
+        HistogramSeries,
+        {
+          priceFormat: {
+            type: 'volume',
+          },
+        },
+        1 // Pane index
+      );
+      volumeSeriesRef.current = volumeSeries;
+      
+      // Apply pane configuration
+      chartRef.current.applyOptions({
+        layout: {
+          panes: {
+            separatorColor: '#ff0000',
+            separatorHoverColor: '#00ff00',
+            enableResize: false,
+          },
+        },
+      });
+    }
+    
     // Chart series creation complete
   };
 
@@ -873,6 +909,21 @@ export default function PricePanel({
       series.setData(processedData);
       seriesUpdated++;
     });
+    
+    // Update volume series with data from first visible token
+    if (volumeSeriesRef.current && selectedTokens.length > 0) {
+      const firstVisibleToken = selectedTokens.find(token => token.visible);
+      if (firstVisibleToken) {
+        const tokenData = allTokensData.get(firstVisibleToken.CA);
+        if (tokenData && tokenData.length > 0) {
+          const volumeData = tokenData.map(item => ({
+            time: item.time,
+            value: item.volume || 0
+          }));
+          volumeSeriesRef.current.setData(volumeData);
+        }
+      }
+    }
     
     // Chart data update complete
     
