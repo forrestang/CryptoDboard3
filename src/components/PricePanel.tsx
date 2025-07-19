@@ -58,7 +58,7 @@ export default function PricePanel({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
-  const volumeSeriesRef = useRef<ISeriesApi<any> | null>(null);
+  const volumeSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
   
   const [mode, setMode] = useState<Mode>('absolute');
   const [isLocked, setIsLocked] = useState(false);
@@ -725,6 +725,17 @@ export default function PricePanel({
               }
         });
         seriesRef.current.clear();
+        
+        // Clear volume series too
+        volumeSeriesRef.current.forEach((volumeSeries) => {
+          try {
+            if (volumeSeries && chartRef.current) {
+              chartRef.current.removeSeries(volumeSeries);
+            }
+          } catch (error) {
+          }
+        });
+        volumeSeriesRef.current.clear();
       }
       setLoading(false);
       return;
@@ -780,13 +791,15 @@ export default function PricePanel({
     seriesRef.current.clear();
     
     // Clear volume series
-    if (volumeSeriesRef.current && chartRef.current) {
+    volumeSeriesRef.current.forEach((volumeSeries) => {
       try {
-        chartRef.current.removeSeries(volumeSeriesRef.current);
+        if (volumeSeries && chartRef.current) {
+          chartRef.current.removeSeries(volumeSeries);
+        }
       } catch (error) {
       }
-      volumeSeriesRef.current = null;
-    }
+    });
+    volumeSeriesRef.current.clear();
 
     // Only create series for tokens that have actual data
     let seriesCreated = 0;
@@ -853,18 +866,33 @@ export default function PricePanel({
       seriesCreated++;
     }
     
-    // Create volume series in separate pane if we have tokens and volume pane is enabled
+    // Create volume series in separate pane for each visible token if volume pane is enabled
     if (seriesCreated > 0 && showVolumePane) {
-      const volumeSeries = chartRef.current.addSeries(
-        HistogramSeries,
-        {
-          priceFormat: {
-            type: 'volume',
+      for (const token of selectedTokens) {
+        if (!token.visible) continue;
+        
+        // Only create volume series if token has data in the current timeframe
+        if (!allTokensData.has(token.CA)) {
+          continue;
+        }
+
+        const tokenData = allTokensData.get(token.CA);
+        if (!tokenData || tokenData.length === 0) {
+          continue;
+        }
+        
+        const volumeSeries = chartRef.current.addSeries(
+          HistogramSeries,
+          {
+            color: token.color,
+            priceFormat: {
+              type: 'volume',
+            },
           },
-        },
-        1 // Pane index
-      );
-      volumeSeriesRef.current = volumeSeries;
+          1 // Pane index
+        );
+        volumeSeriesRef.current.set(token.CA, volumeSeries);
+      }
       
       // Apply pane configuration
       chartRef.current.applyOptions({
@@ -915,19 +943,18 @@ export default function PricePanel({
       seriesUpdated++;
     });
     
-    // Update volume series with data from first visible token (only if volume pane is enabled)
-    if (volumeSeriesRef.current && selectedTokens.length > 0 && showVolumePane) {
-      const firstVisibleToken = selectedTokens.find(token => token.visible);
-      if (firstVisibleToken) {
-        const tokenData = allTokensData.get(firstVisibleToken.CA);
+    // Update volume series with data for all visible tokens (only if volume pane is enabled)
+    if (showVolumePane && selectedTokens.length > 0) {
+      volumeSeriesRef.current.forEach((volumeSeries, tokenCA) => {
+        const tokenData = allTokensData.get(tokenCA);
         if (tokenData && tokenData.length > 0) {
           const volumeData = tokenData.map(item => ({
             time: item.time,
             value: item.volume || 0
           }));
-          volumeSeriesRef.current.setData(volumeData);
+          volumeSeries.setData(volumeData);
         }
-      }
+      });
     }
     
     // Chart data update complete
