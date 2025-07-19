@@ -17,7 +17,8 @@ import {
   BarChart3, 
   CandlestickChart, 
   TrendingUp,
-  GripHorizontal
+  GripHorizontal,
+  PanelBottomDashed
 } from 'lucide-react';
 import { type ChartListItem } from '../lib/types';
 import { 
@@ -62,6 +63,7 @@ export default function PricePanel({
   const [mode, setMode] = useState<Mode>('absolute');
   const [isLocked, setIsLocked] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showVolumePane, setShowVolumePane] = useState(true);
   
   // Scale state storage for lock functionality
   const [lockedLogicalRange, setLockedLogicalRange] = useState<{from: number, to: number} | null>(null);
@@ -110,6 +112,7 @@ export default function PricePanel({
       setIsLocked(settings.isLocked);
       setRightMargin(settings.rightMargin);
       setChartHeight(settings.chartHeight || 400);
+      setShowVolumePane(settings.showVolumePane ?? true);
       
       onChartTypeChange(settings.chartType);
       onDecimalsChange(settings.decimals);
@@ -129,6 +132,7 @@ export default function PricePanel({
     onDecimalsChange(settings.decimals);
     setRightMargin(settings.rightMargin);
     setIsLocked(settings.isLocked);
+    setShowVolumePane(settings.showVolumePane ?? true);
     
     // Load chart height if available, otherwise use default
     setChartHeight(settings.chartHeight || 400);
@@ -156,6 +160,7 @@ export default function PricePanel({
       rightMargin,
       isLocked,
       chartHeight,
+      showVolumePane,
     };
     
     // Include rebase point for percentage mode
@@ -164,7 +169,7 @@ export default function PricePanel({
     }
     
     setModeSettings(mode as StorageMode, settings);
-  }, [mode, chartType, decimals, rightMargin, isLocked, rebaseTimestamp, chartHeight]);
+  }, [mode, chartType, decimals, rightMargin, isLocked, rebaseTimestamp, chartHeight, showVolumePane]);
 
   // Find the rightmost (latest) timestamp across all visible tokens
   const findRightmostTimestamp = useCallback((): number => {
@@ -848,8 +853,8 @@ export default function PricePanel({
       seriesCreated++;
     }
     
-    // Create volume series in separate pane if we have tokens
-    if (seriesCreated > 0) {
+    // Create volume series in separate pane if we have tokens and volume pane is enabled
+    if (seriesCreated > 0 && showVolumePane) {
       const volumeSeries = chartRef.current.addSeries(
         HistogramSeries,
         {
@@ -865,9 +870,9 @@ export default function PricePanel({
       chartRef.current.applyOptions({
         layout: {
           panes: {
-            separatorColor: '#ff0000',
-            separatorHoverColor: '#00ff00',
-            enableResize: false,
+            separatorColor: '#888888',
+            separatorHoverColor: '#ffffff',
+            enableResize: true,
           },
         },
       });
@@ -910,8 +915,8 @@ export default function PricePanel({
       seriesUpdated++;
     });
     
-    // Update volume series with data from first visible token
-    if (volumeSeriesRef.current && selectedTokens.length > 0) {
+    // Update volume series with data from first visible token (only if volume pane is enabled)
+    if (volumeSeriesRef.current && selectedTokens.length > 0 && showVolumePane) {
       const firstVisibleToken = selectedTokens.find(token => token.visible);
       if (firstVisibleToken) {
         const tokenData = allTokensData.get(firstVisibleToken.CA);
@@ -981,14 +986,14 @@ export default function PricePanel({
       createChartSeries();
       updateChartData();
     }
-  }, [selectedTokens, chartType, decimals, allTokensData, loading]);
+  }, [selectedTokens, chartType, decimals, allTokensData, loading, showVolumePane]);
 
   // Effect for updating data when mode or rebase changes
   useEffect(() => {
     if (allTokensData.size > 0 && !loading) {
       updateChartData();
     }
-  }, [mode, rebaseTimestamp, loading]);
+  }, [mode, rebaseTimestamp, loading, showVolumePane]);
 
   // Effect for updating price scale precision when decimals change
   useEffect(() => {
@@ -1197,10 +1202,27 @@ export default function PricePanel({
     <div className="h-full flex flex-col rounded border-l-[4px] border-r-[4px]" style={{backgroundColor: '#0a0a0a', borderColor: '#111111'}}>
       {/* Price Panel Header */}
       <div className="border-b border-gray-800 px-3 py-2" style={{backgroundColor: '#111111'}}>
-        {/* Flex container that wraps when content doesn't fit */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Left side controls - will stay together */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+        {/* Header layout with left and right sections */}
+        <div className="flex items-center justify-between gap-4">
+          {/* LEFT SECTION: Sub-panel controls */}
+          <div className="flex items-center flex-shrink-0">
+            {/* Volume Pane Toggle */}
+            <button
+              onClick={() => setShowVolumePane(!showVolumePane)}
+              className={`px-2 py-1 rounded transition-colors ${
+                showVolumePane 
+                  ? 'bg-green-600 text-white' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              }`}
+              style={!showVolumePane ? {backgroundColor: '#2a2a2a'} : {}}
+              title={showVolumePane ? 'Hide Volume Pane' : 'Show Volume Pane'}
+            >
+              <PanelBottomDashed size={14} />
+            </button>
+          </div>
+
+          {/* RIGHT SECTION: Price panel controls */}
+          <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
             {/* Chart Type Group */}
             <div className="flex items-center rounded-lg p-1" style={{backgroundColor: '#1a1a1a', gap: '2px'}}>
               <button
@@ -1286,32 +1308,29 @@ export default function PricePanel({
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Timeframe Group - wraps to row 2 when needed */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <div className="flex items-center rounded-lg p-1" style={{backgroundColor: '#1a1a1a', gap: '2px'}}>
-              {timeFrames.map(tf => (
-                <button
-                  key={tf}
-                  onClick={() => {
-                    onTimeFrameChange(tf);
-                  }}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${
-                    currentTimeFrame === tf
-                      ? 'bg-green-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-600'
-                  }`}
-                  style={currentTimeFrame !== tf ? {backgroundColor: '#2a2a2a'} : {}}
-                >
-                  {tf}
-                </button>
-              ))}
+            {/* Timeframe Group */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg p-1" style={{backgroundColor: '#1a1a1a', gap: '2px'}}>
+                {timeFrames.map(tf => (
+                  <button
+                    key={tf}
+                    onClick={() => {
+                      onTimeFrameChange(tf);
+                    }}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      currentTimeFrame === tf
+                        ? 'bg-green-600 text-white'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                    }`}
+                    style={currentTimeFrame !== tf ? {backgroundColor: '#2a2a2a'} : {}}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Mode + Scale Controls Group - wraps to row 3 when needed */}
-          <div className="flex items-center gap-4 flex-shrink-0">
             {/* Mode Group */}
             <div className="flex items-center rounded-lg" style={{backgroundColor: '#1a1a1a'}}>
               <button

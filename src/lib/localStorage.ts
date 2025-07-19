@@ -12,6 +12,7 @@ export interface ModeSettings {
   isLocked: boolean;
   chartHeight?: number; // Chart height in pixels
   rebasePoint?: number; // Only for percentage mode
+  showVolumePane?: boolean; // Volume pane visibility toggle
 }
 
 // Global settings that apply regardless of mode
@@ -99,7 +100,8 @@ const DEFAULT_MODE_SETTINGS: ModeSettings = {
   decimals: 2,
   rightMargin: 10,
   isLocked: false,
-  chartHeight: 400
+  chartHeight: 400,
+  showVolumePane: true
 };
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
