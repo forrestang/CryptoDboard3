@@ -18,7 +18,9 @@ import {
   CandlestickChart, 
   TrendingUp,
   GripHorizontal,
-  PanelBottomDashed
+  PanelBottomDashed,
+  Percent,
+  Triangle
 } from 'lucide-react';
 import { type ChartListItem } from '../lib/types';
 import { 
@@ -58,12 +60,14 @@ export default function PricePanel({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
-  const volumeSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
+  const cdSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
   
   const [mode, setMode] = useState<Mode>('absolute');
   const [isLocked, setIsLocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showVolumePane, setShowVolumePane] = useState(true);
+  const [cdPercentageMode, setCdPercentageMode] = useState(true);
+  const [cdIndividualMode, setCdIndividualMode] = useState(false);
   
   // Scale state storage for lock functionality
   const [lockedLogicalRange, setLockedLogicalRange] = useState<{from: number, to: number} | null>(null);
@@ -113,6 +117,8 @@ export default function PricePanel({
       setRightMargin(settings.rightMargin);
       setChartHeight(settings.chartHeight || 400);
       setShowVolumePane(settings.showVolumePane ?? true);
+      setCdPercentageMode(settings.cdPercentageMode ?? true);
+      setCdIndividualMode(settings.cdIndividualMode ?? false);
       
       onChartTypeChange(settings.chartType);
       onDecimalsChange(settings.decimals);
@@ -133,6 +139,8 @@ export default function PricePanel({
     setRightMargin(settings.rightMargin);
     setIsLocked(settings.isLocked);
     setShowVolumePane(settings.showVolumePane ?? true);
+    setCdPercentageMode(settings.cdPercentageMode ?? true);
+    setCdIndividualMode(settings.cdIndividualMode ?? false);
     
     // Load chart height if available, otherwise use default
     setChartHeight(settings.chartHeight || 400);
@@ -161,6 +169,8 @@ export default function PricePanel({
       isLocked,
       chartHeight,
       showVolumePane,
+      cdPercentageMode,
+      cdIndividualMode,
     };
     
     // Include rebase point for percentage mode
@@ -169,7 +179,7 @@ export default function PricePanel({
     }
     
     setModeSettings(mode as StorageMode, settings);
-  }, [mode, chartType, decimals, rightMargin, isLocked, rebaseTimestamp, chartHeight, showVolumePane]);
+  }, [mode, chartType, decimals, rightMargin, isLocked, rebaseTimestamp, chartHeight, showVolumePane, cdPercentageMode, cdIndividualMode]);
 
   // Find the rightmost (latest) timestamp across all visible tokens
   const findRightmostTimestamp = useCallback((): number => {
@@ -707,6 +717,193 @@ export default function PricePanel({
     }));
   };
 
+  // Calculate Cumulative Delta (CD) values from OHLCV data
+  const calculateCumulativeDelta = (data: any[]) => {
+    if (!data || data.length === 0) return [];
+    
+    let cumulativeTotal = 0;
+    
+    return data.map(item => {
+      const { open, high, low, close, volume } = item;
+      
+      // Handle edge case where high equals low (no price movement)
+      if (high === low) {
+        return {
+          time: item.time,
+          value: cumulativeTotal
+        };
+      }
+      
+      // Calculate CD components
+      const CDbuy = ((close - low) / (high - low)) * volume;
+      const CDsell = ((close - high) / (high - low)) * volume;
+      const CDtotal = CDbuy + CDsell;
+      
+      // Add to cumulative total
+      cumulativeTotal += CDtotal;
+      
+      return {
+        time: item.time,
+        value: cumulativeTotal
+      };
+    });
+  };
+
+  // Find baseline CD value at specific timestamp for rebase calculation
+  const findCDRebaseBaseline = (cdData: any[], targetTimestamp: number) => {
+    if (!cdData || cdData.length === 0) return null;
+    
+    // Find the CD data point closest to the target timestamp
+    let closestPoint = cdData[0];
+    let closestDiff = Math.abs(cdData[0].time - targetTimestamp);
+    
+    for (let i = 1; i < cdData.length; i++) {
+      const diff = Math.abs(cdData[i].time - targetTimestamp);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestPoint = cdData[i];
+      }
+    }
+    
+    // Return the CD value of the closest point
+    return closestPoint.value;
+  };
+
+  // Transform CD data to percentage changes from baseline
+  const transformCDToPercentage = (cdData: any[], baseline: number) => {
+    if (!cdData || cdData.length === 0 || baseline === null || baseline === undefined) {
+      return cdData;
+    }
+
+    // Handle zero baseline to avoid division by zero
+    if (baseline === 0) {
+      return cdData.map(item => ({
+        ...item,
+        value: 0
+      }));
+    }
+
+    return cdData.map(item => ({
+      ...item,
+      value: ((item.value - baseline) / Math.abs(baseline)) * 100
+    }));
+  };
+
+  // Transform CD data based on rebase timestamp
+  const transformCDToPercentageWithRebase = (cdData: any[], rebaseTimestamp: number) => {
+    const baseline = findCDRebaseBaseline(cdData, rebaseTimestamp);
+    if (baseline === null) return cdData;
+    
+    return transformCDToPercentage(cdData, baseline);
+  };
+
+  // Transform CD data to raw shift (subtract baseline without percentage conversion)
+  const transformCDToRawShift = (cdData: any[], baseline: number) => {
+    if (!cdData || cdData.length === 0 || baseline === null || baseline === undefined) {
+      return cdData;
+    }
+
+    return cdData.map(item => ({
+      ...item,
+      value: item.value - baseline
+    }));
+  };
+
+  // Transform CD data to raw shift based on rebase timestamp
+  const transformCDToRawShiftWithRebase = (cdData: any[], rebaseTimestamp: number) => {
+    const baseline = findCDRebaseBaseline(cdData, rebaseTimestamp);
+    if (baseline === null) return cdData;
+    
+    return transformCDToRawShift(cdData, baseline);
+  };
+
+  // Calculate Individual Delta (CDtotal per bar, not cumulative)
+  const calculateIndividualDelta = (data: any[]) => {
+    if (!data || data.length === 0) return [];
+    
+    return data.map(item => {
+      const { open, high, low, close, volume } = item;
+      
+      // Handle edge case where high equals low (no price movement)
+      if (high === low) {
+        return {
+          time: item.time,
+          value: 0
+        };
+      }
+      
+      // Calculate CD components for this bar only
+      const CDbuy = ((close - low) / (high - low)) * volume;
+      const CDsell = ((close - high) / (high - low)) * volume;
+      const CDtotal = CDbuy + CDsell;
+      
+      return {
+        time: item.time,
+        value: CDtotal
+      };
+    });
+  };
+
+  // Calculate Individual Delta with percentage change from prior period
+  const calculateIndividualDeltaPercentage = (data: any[]) => {
+    if (!data || data.length === 0) return [];
+    
+    return data.map((item, index) => {
+      const { open, high, low, close, volume } = item;
+      
+      // Handle edge case where high equals low (no price movement)
+      if (high === low) {
+        return {
+          time: item.time,
+          value: index === 0 ? 0 : 0 // No change when no price movement
+        };
+      }
+      
+      // Calculate CD components for current bar
+      const CDbuy = ((close - low) / (high - low)) * volume;
+      const CDsell = ((close - high) / (high - low)) * volume;
+      const currentCDtotal = CDbuy + CDsell;
+      
+      // For first bar, return 0 (no previous data)
+      if (index === 0) {
+        return {
+          time: item.time,
+          value: 0
+        };
+      }
+      
+      // Calculate previous bar's CDtotal
+      const prevItem = data[index - 1];
+      if (prevItem.high === prevItem.low) {
+        // Previous bar had no price movement
+        return {
+          time: item.time,
+          value: currentCDtotal === 0 ? 0 : (currentCDtotal > 0 ? 100 : -100)
+        };
+      }
+      
+      const prevCDbuy = ((prevItem.close - prevItem.low) / (prevItem.high - prevItem.low)) * prevItem.volume;
+      const prevCDsell = ((prevItem.close - prevItem.high) / (prevItem.high - prevItem.low)) * prevItem.volume;
+      const previousCDtotal = prevCDbuy + prevCDsell;
+      
+      // Calculate percentage change from previous period
+      if (previousCDtotal === 0) {
+        // Previous was zero, return large percentage if current is non-zero
+        return {
+          time: item.time,
+          value: currentCDtotal === 0 ? 0 : (currentCDtotal > 0 ? 100 : -100)
+        };
+      }
+      
+      const percentageChange = ((currentCDtotal - previousCDtotal) / Math.abs(previousCDtotal)) * 100;
+      
+      return {
+        time: item.time,
+        value: percentageChange
+      };
+    });
+  };
+
   // Fetch and cache all token data
   const fetchAllTokensData = async () => {
     setLoading(true);
@@ -726,16 +923,16 @@ export default function PricePanel({
         });
         seriesRef.current.clear();
         
-        // Clear volume series too
-        volumeSeriesRef.current.forEach((volumeSeries) => {
+        // Clear CD series too
+        cdSeriesRef.current.forEach((cdSeries) => {
           try {
-            if (volumeSeries && chartRef.current) {
-              chartRef.current.removeSeries(volumeSeries);
+            if (cdSeries && chartRef.current) {
+              chartRef.current.removeSeries(cdSeries);
             }
           } catch (error) {
           }
         });
-        volumeSeriesRef.current.clear();
+        cdSeriesRef.current.clear();
       }
       setLoading(false);
       return;
@@ -790,16 +987,16 @@ export default function PricePanel({
     });
     seriesRef.current.clear();
     
-    // Clear volume series
-    volumeSeriesRef.current.forEach((volumeSeries) => {
+    // Clear CD series
+    cdSeriesRef.current.forEach((cdSeries) => {
       try {
-        if (volumeSeries && chartRef.current) {
-          chartRef.current.removeSeries(volumeSeries);
+        if (cdSeries && chartRef.current) {
+          chartRef.current.removeSeries(cdSeries);
         }
       } catch (error) {
       }
     });
-    volumeSeriesRef.current.clear();
+    cdSeriesRef.current.clear();
 
     // Only create series for tokens that have actual data
     let seriesCreated = 0;
@@ -866,12 +1063,12 @@ export default function PricePanel({
       seriesCreated++;
     }
     
-    // Create volume series in separate pane for each visible token if volume pane is enabled
+    // Create CD series in separate pane for each visible token if CD pane is enabled
     if (seriesCreated > 0 && showVolumePane) {
       for (const token of selectedTokens) {
         if (!token.visible) continue;
         
-        // Only create volume series if token has data in the current timeframe
+        // Only create CD series if token has data in the current timeframe
         if (!allTokensData.has(token.CA)) {
           continue;
         }
@@ -881,17 +1078,24 @@ export default function PricePanel({
           continue;
         }
         
-        const volumeSeries = chartRef.current.addSeries(
-          HistogramSeries,
+        const cdSeries = chartRef.current.addSeries(
+          LineSeries,
           {
             color: token.color,
-            priceFormat: {
-              type: 'volume',
+            lineWidth: 2,
+            priceFormat: (mode === 'percentage' && cdPercentageMode) ? {
+              type: 'percent',
+              precision: 2,
+              minMove: 0.01,
+            } : {
+              type: 'price',
+              precision: 0,
+              minMove: 1,
             },
           },
           1 // Pane index
         );
-        volumeSeriesRef.current.set(token.CA, volumeSeries);
+        cdSeriesRef.current.set(token.CA, cdSeries);
       }
       
       // Apply pane configuration
@@ -943,16 +1147,40 @@ export default function PricePanel({
       seriesUpdated++;
     });
     
-    // Update volume series with data for all visible tokens (only if volume pane is enabled)
+    // Update CD series with data for all visible tokens (only if CD pane is enabled)
     if (showVolumePane && selectedTokens.length > 0) {
-      volumeSeriesRef.current.forEach((volumeSeries, tokenCA) => {
+      cdSeriesRef.current.forEach((cdSeries, tokenCA) => {
         const tokenData = allTokensData.get(tokenCA);
         if (tokenData && tokenData.length > 0) {
-          const volumeData = tokenData.map(item => ({
-            time: item.time,
-            value: item.volume || 0
-          }));
-          volumeSeries.setData(volumeData);
+          let cdData;
+          
+          // Determine which calculation mode to use
+          if (cdIndividualMode) {
+            // Individual Delta mode
+            if (cdPercentageMode) {
+              // Individual Delta with percentage change from prior period
+              cdData = calculateIndividualDeltaPercentage(tokenData);
+            } else {
+              // Individual Delta raw values
+              cdData = calculateIndividualDelta(tokenData);
+            }
+          } else {
+            // Cumulative Delta mode (current behavior)
+            cdData = calculateCumulativeDelta(tokenData);
+            
+            // Apply transformation to CD data if in percentage mode
+            if (mode === 'percentage' && rebaseTimestamp > 0) {
+              if (cdPercentageMode) {
+                // Apply percentage transformation
+                cdData = transformCDToPercentageWithRebase(cdData, rebaseTimestamp);
+              } else {
+                // Apply raw shift transformation
+                cdData = transformCDToRawShiftWithRebase(cdData, rebaseTimestamp);
+              }
+            }
+          }
+          
+          cdSeries.setData(cdData);
         }
       });
     }
@@ -1013,14 +1241,14 @@ export default function PricePanel({
       createChartSeries();
       updateChartData();
     }
-  }, [selectedTokens, chartType, decimals, allTokensData, loading, showVolumePane]);
+  }, [selectedTokens, chartType, decimals, allTokensData, loading, showVolumePane, cdPercentageMode, cdIndividualMode]);
 
   // Effect for updating data when mode or rebase changes
   useEffect(() => {
     if (allTokensData.size > 0 && !loading) {
       updateChartData();
     }
-  }, [mode, rebaseTimestamp, loading, showVolumePane]);
+  }, [mode, rebaseTimestamp, loading, showVolumePane, cdPercentageMode, cdIndividualMode]);
 
   // Effect for updating price scale precision when decimals change
   useEffect(() => {
@@ -1232,8 +1460,8 @@ export default function PricePanel({
         {/* Header layout with left and right sections */}
         <div className="flex items-center justify-between gap-4">
           {/* LEFT SECTION: Sub-panel controls */}
-          <div className="flex items-center flex-shrink-0">
-            {/* Volume Pane Toggle */}
+          <div className="flex items-center flex-shrink-0 gap-1">
+            {/* CD Pane Toggle */}
             <button
               onClick={() => setShowVolumePane(!showVolumePane)}
               className={`px-2 py-1 rounded transition-colors ${
@@ -1242,10 +1470,42 @@ export default function PricePanel({
                   : 'text-gray-400 hover:text-white hover:bg-gray-800'
               }`}
               style={!showVolumePane ? {backgroundColor: '#2a2a2a'} : {}}
-              title={showVolumePane ? 'Hide Volume Pane' : 'Show Volume Pane'}
+              title={showVolumePane ? 'Hide CD Pane' : 'Show CD Pane'}
             >
               <PanelBottomDashed size={14} />
             </button>
+            
+            {/* CD Percentage Toggle - Only visible when CD pane is shown */}
+            {showVolumePane && (
+              <button
+                onClick={() => setCdPercentageMode(!cdPercentageMode)}
+                className={`px-2 py-1 rounded transition-colors ${
+                  cdPercentageMode 
+                    ? 'bg-green-600 text-white' 
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                style={!cdPercentageMode ? {backgroundColor: '#2a2a2a'} : {}}
+                title={cdPercentageMode ? 'CD Percentage Mode ON' : 'CD Raw Shift Mode ON'}
+              >
+                <Percent size={14} />
+              </button>
+            )}
+            
+            {/* CD Individual Mode Toggle - Only visible when CD pane is shown */}
+            {showVolumePane && (
+              <button
+                onClick={() => setCdIndividualMode(!cdIndividualMode)}
+                className={`px-2 py-1 rounded transition-colors ${
+                  cdIndividualMode 
+                    ? 'bg-green-600 text-white' 
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                style={!cdIndividualMode ? {backgroundColor: '#2a2a2a'} : {}}
+                title={cdIndividualMode ? 'Individual Delta Mode ON' : 'Cumulative Delta Mode ON'}
+              >
+                <Triangle size={14} />
+              </button>
+            )}
           </div>
 
           {/* RIGHT SECTION: Price panel controls */}
