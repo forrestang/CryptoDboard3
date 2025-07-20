@@ -34,7 +34,7 @@ export default function MainArea({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Price Panel */}
-      <div className="flex-shrink-0 p-3">
+      <div className="flex-shrink-0 pt-3 px-3 pb-0">
         <PricePanel 
           selectedTokens={selectedTokens} 
           currentTimeFrame={currentTimeFrame}
@@ -48,7 +48,7 @@ export default function MainArea({
       </div>
 
       {/* Trending Tokens Panel */}
-      <div className="flex-1 min-h-48 overflow-hidden p-3">
+      <div className="flex-1 min-h-48 pt-3 px-3 pb-3">
         <TrendingTokensPanel 
           onAddToken={onAddToken}
           currentTimeFrame={currentTimeFrame}

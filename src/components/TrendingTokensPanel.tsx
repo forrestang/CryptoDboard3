@@ -577,6 +577,22 @@ export default function TrendingTokensPanel({ onAddToken, currentTimeFrame }: Tr
     };
   }, [mounted]);
 
+  // Window resize listener to recalculate spacer height
+  useEffect(() => {
+    if (!mounted) return;
+
+    const handleResize = () => {
+      const newSpacerHeight = calculateSpacerHeight();
+      setSpacerHeight(newSpacerHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [mounted]);
+
   // Execute the smooth transition sequence
   const executeTransitionSequence = () => {
     const totalFadeTimeMs = parseTimeToSeconds(fadeTime) * 1000;
@@ -1091,7 +1107,9 @@ export default function TrendingTokensPanel({ onAddToken, currentTimeFrame }: Tr
   }
 
   return (
-    <div className="h-full flex flex-col rounded border-l-[4px] border-r-[4px]" style={{backgroundColor: '#0a0a0a', borderColor: '#111111'}}>
+    <div className="h-full flex flex-col rounded border-l-[4px] border-r-[4px]" style={{backgroundColor: '#0a0a0a', borderColor: '#111111', position: 'relative'}}>
+      {/* Extended bottom border */}
+      <div style={{position: 'absolute', bottom: '-12px', left: '0', right: '0', height: '4px', backgroundColor: '#111111'}}></div>
       {/* CSS for smooth transitions and pulsing animations */}
       <style jsx>{`
         @keyframes pulse-red {
@@ -1380,7 +1398,7 @@ export default function TrendingTokensPanel({ onAddToken, currentTimeFrame }: Tr
         </div>
         
         {/* Main table area with left scrollbar */}
-        <div className="flex-1 flex" style={{ maxHeight: '400px' }}>
+        <div className="flex-1 flex" style={{ maxHeight: 'calc(100vh - 180px)' }}>
           {/* Left vertical scrollbar */}
           <div 
             ref={leftScrollRef}
@@ -1388,7 +1406,7 @@ export default function TrendingTokensPanel({ onAddToken, currentTimeFrame }: Tr
             style={{ 
               width: '8px', 
               height: '100%',
-              maxHeight: '400px'
+              maxHeight: 'calc(100vh - 180px)'
             }}
             onScroll={handleLeftScrollbarScroll}
           >
@@ -1407,7 +1425,7 @@ export default function TrendingTokensPanel({ onAddToken, currentTimeFrame }: Tr
             style={{ 
               scrollbarWidth: 'none', /* Firefox */
               msOverflowStyle: 'none', /* IE/Edge */
-              maxHeight: '400px'
+              maxHeight: 'calc(100vh - 180px)'
             }}
             onScroll={handleTableScroll}
           >
