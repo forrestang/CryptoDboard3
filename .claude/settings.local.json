@@ -62,7 +62,8 @@
       "Bash(del /f package-lock.json)",
       "Bash(\"C:\\Users\\lawfp\\AppData\\Local\\Programs\\Python\\Python311\\python.exe\" --version)",
       "Bash(winget install:*)",
-      "Bash(del test-db.js)"
+      "Bash(del test-db.js)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

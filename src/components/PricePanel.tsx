@@ -68,10 +68,12 @@ export default function PricePanel({
   const [showVolumePane, setShowVolumePane] = useState(true);
   const [cdPercentageMode, setCdPercentageMode] = useState(true);
   const [cdIndividualMode, setCdIndividualMode] = useState(false);
+  const [paneHeights, setPaneHeights] = useState<number[]>([300, 100]);
   
   // Scale state storage for lock functionality
   const [lockedLogicalRange, setLockedLogicalRange] = useState<{from: number, to: number} | null>(null);
   const [lockedPriceRange, setLockedPriceRange] = useState<{from: number, to: number} | null>(null);
+  const [lockedCDPriceRange, setLockedCDPriceRange] = useState<{from: number, to: number} | null>(null);
   
   
   // Right margin state
@@ -119,6 +121,7 @@ export default function PricePanel({
       setShowVolumePane(settings.showVolumePane ?? true);
       setCdPercentageMode(settings.cdPercentageMode ?? true);
       setCdIndividualMode(settings.cdIndividualMode ?? false);
+      setPaneHeights(settings.paneHeights ?? [300, 100]);
       
       onChartTypeChange(settings.chartType);
       onDecimalsChange(settings.decimals);
@@ -141,6 +144,7 @@ export default function PricePanel({
     setShowVolumePane(settings.showVolumePane ?? true);
     setCdPercentageMode(settings.cdPercentageMode ?? true);
     setCdIndividualMode(settings.cdIndividualMode ?? false);
+    setPaneHeights(settings.paneHeights ?? [300, 100]);
     
     // Load chart height if available, otherwise use default
     setChartHeight(settings.chartHeight || 400);
@@ -171,6 +175,7 @@ export default function PricePanel({
       showVolumePane,
       cdPercentageMode,
       cdIndividualMode,
+      paneHeights,
     };
     
     // Include rebase point for percentage mode
@@ -179,7 +184,7 @@ export default function PricePanel({
     }
     
     setModeSettings(mode as StorageMode, settings);
-  }, [mode, chartType, decimals, rightMargin, isLocked, rebaseTimestamp, chartHeight, showVolumePane, cdPercentageMode, cdIndividualMode]);
+  }, [mode, chartType, decimals, rightMargin, isLocked, rebaseTimestamp, chartHeight, showVolumePane, cdPercentageMode, cdIndividualMode, paneHeights]);
 
   // Find the rightmost (latest) timestamp across all visible tokens
   const findRightmostTimestamp = useCallback((): number => {
@@ -367,8 +372,8 @@ export default function PricePanel({
       rightPriceScale: {
         borderColor: '#485c7b',
         scaleMargins: {
-          top: 0.3,
-          bottom: 0.25,
+          top: 0.1,
+          bottom: 0.05,
         },
       },
     });
@@ -904,6 +909,45 @@ export default function PricePanel({
     });
   };
 
+  // Capture current pane heights from the chart
+  const capturePaneHeights = useCallback((): number[] => {
+    if (!chartRef.current) return paneHeights;
+    
+    try {
+      const chart = chartRef.current;
+      const panes = chart.panes();
+      
+      if (panes.length === 0) return paneHeights;
+      
+      const heights = panes.map(pane => pane.getSize().height);
+      return heights;
+    } catch (error) {
+      console.warn('Failed to capture pane heights:', error);
+      return paneHeights;
+    }
+  }, [paneHeights]);
+
+  // Restore pane heights after series recreation
+  const restorePaneHeights = useCallback((heights: number[]) => {
+    console.log('restorePaneHeights called with:', heights);
+    
+    // NOTE: After research, LightWeight Charts doesn't provide a reliable API
+    // to programmatically set individual pane heights. The pane resizing is
+    // intended to be user-driven through the drag handle.
+    // 
+    // The chart automatically manages pane proportions and there's no public
+    // API to override this behavior. The setHeight() method either doesn't exist
+    // or doesn't work as expected.
+    //
+    // For now, we'll just log the attempted restoration and let the user 
+    // manually resize panes. A future enhancement could involve:
+    // 1. Using a different charting library with better pane control
+    // 2. Implementing a custom pane management system
+    // 3. Finding undocumented LightWeight Charts APIs
+    
+    console.log('Pane height restoration attempted but not supported by LightWeight Charts API');
+  }, []);
+
   // Fetch and cache all token data
   const fetchAllTokensData = async () => {
     setLoading(true);
@@ -1084,14 +1128,16 @@ export default function PricePanel({
             color: token.color,
             lineWidth: 2,
             priceFormat: (mode === 'percentage' && cdPercentageMode) ? {
-              type: 'percent',
-              precision: 2,
-              minMove: 0.01,
+              type: 'price',
+              precision: decimals,
+              minMove: decimals > 0 ? Math.pow(10, -decimals) : 1,
             } : {
               type: 'price',
               precision: 0,
               minMove: 1,
             },
+            lastValueVisible: false,
+            priceLineVisible: false,
           },
           1 // Pane index
         );
@@ -1108,6 +1154,45 @@ export default function PricePanel({
           },
         },
       });
+      
+      // Apply lock scaling if chart is locked (after pane creation)
+      if (isLocked) {
+        setTimeout(() => {
+          // Apply locked scaling manually to avoid dependency issues
+          if (chartRef.current && seriesRef.current.size > 0) {
+            try {
+              // Restore logical range if locked
+              if (lockedLogicalRange && lockedLogicalRange.from < lockedLogicalRange.to) {
+                chartRef.current.timeScale().setVisibleLogicalRange(lockedLogicalRange);
+              }
+              
+              // Restore price range if locked  
+              if (lockedPriceRange && lockedPriceRange.from < lockedPriceRange.to) {
+                seriesRef.current.forEach((series) => {
+                  try {
+                    series.priceScale().setVisibleRange(lockedPriceRange);
+                  } catch (error) {
+                    // Silent error handling
+                  }
+                });
+              }
+              
+              // Restore CD pane price range if locked and CD pane is visible
+              if (showVolumePane && lockedCDPriceRange && lockedCDPriceRange.from < lockedCDPriceRange.to && cdSeriesRef.current.size > 0) {
+                cdSeriesRef.current.forEach((cdSeries) => {
+                  try {
+                    cdSeries.priceScale().setVisibleRange(lockedCDPriceRange);
+                  } catch (error) {
+                    // Silent error handling
+                  }
+                });
+              }
+            } catch (error) {
+              console.warn('Failed to apply locked scaling:', error);
+            }
+          }
+        }, 50);
+      }
     }
     
     // Chart series creation complete
@@ -1193,13 +1278,14 @@ export default function PricePanel({
         if (chartRef.current) {
           if (isLocked) {
             // Restore locked scaling instead of auto-scaling
+            // Delay slightly more to ensure pane heights are restored first
             applyLockedScaling();
           } else {
             // Normal auto-scaling when not locked
             chartRef.current.timeScale().fitContent();
           }
         }
-      }, 100);
+      }, 150);
     }
   };
 
@@ -1284,10 +1370,21 @@ export default function PricePanel({
           }
         });
       }
+      
+      // Validate and restore CD pane price range if locked and CD pane is visible
+      if (showVolumePane && lockedCDPriceRange && lockedCDPriceRange.from < lockedCDPriceRange.to && cdSeriesRef.current.size > 0) {
+        cdSeriesRef.current.forEach((cdSeries) => {
+          try {
+            cdSeries.priceScale().setVisibleRange(lockedCDPriceRange);
+          } catch (error) {
+            // Silent error handling to prevent infinite loops
+          }
+        });
+      }
     } catch (error) {
       // Silent error handling to prevent infinite loops
     }
-  }, [isLocked, lockedLogicalRange, lockedPriceRange]);
+  }, [isLocked, lockedLogicalRange, lockedPriceRange, lockedCDPriceRange, showVolumePane]);
 
   // Effect to apply locked scaling when lock state changes or data updates
   useEffect(() => {
@@ -1313,6 +1410,12 @@ export default function PricePanel({
     }
   }, [isLocked, applyLockedScaling, allTokensData, loading]);
 
+  // Monitor pane height changes and save to localStorage
+  // NOTE: Disabled because LightWeight Charts doesn't support programmatic pane height setting
+  // useEffect(() => {
+  //   // Pane height monitoring disabled - LightWeight Charts API limitation
+  // }, []);
+
   const timeFrames: TimeFrame[] = ['M1', 'M5', 'M15', 'H1', 'H4', 'H12', 'D1'];
 
   const handleAutoScale = () => {
@@ -1321,10 +1424,17 @@ export default function PricePanel({
     }
     
     if (chartRef.current) {
-      // Apply auto-scale to all series
+      // Apply auto-scale to all main chart series
       seriesRef.current.forEach((series) => {
         series.priceScale().applyOptions({ autoScale: true });
       });
+      
+      // Apply auto-scale to all CD series if CD pane is visible
+      if (showVolumePane) {
+        cdSeriesRef.current.forEach((cdSeries) => {
+          cdSeries.priceScale().applyOptions({ autoScale: true });
+        });
+      }
     }
   };
 
@@ -1368,6 +1478,21 @@ export default function PricePanel({
               }
             }
           }
+          
+          // Capture CD pane price range if CD pane is visible and has series
+          if (showVolumePane && cdSeriesRef.current.size > 0) {
+            const firstCDSeries = cdSeriesRef.current.values().next().value;
+            if (firstCDSeries) {
+              try {
+                const cdPriceRange = firstCDSeries.priceScale().getVisibleRange();
+                if (cdPriceRange) {
+                  setLockedCDPriceRange(cdPriceRange);
+                }
+              } catch (error) {
+                // Silent error handling to prevent infinite loops
+              }
+            }
+          }
         }
       } catch (error) {
         // Silent error handling to prevent infinite loops
@@ -1376,6 +1501,7 @@ export default function PricePanel({
       // Unlocking: clear ranges
       setLockedLogicalRange(null);
       setLockedPriceRange(null);
+      setLockedCDPriceRange(null);
     }
     
     setIsLocked(!isLocked);

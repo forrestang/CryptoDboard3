@@ -12,7 +12,10 @@ export interface ModeSettings {
   isLocked: boolean;
   chartHeight?: number; // Chart height in pixels
   rebasePoint?: number; // Only for percentage mode
-  showVolumePane?: boolean; // Volume pane visibility toggle
+  showVolumePane?: boolean; // CD pane visibility toggle
+  cdPercentageMode?: boolean; // CD percentage transformation toggle
+  cdIndividualMode?: boolean; // CD individual delta mode toggle
+  paneHeights?: number[]; // Heights of each pane in pixels
 }
 
 // Global settings that apply regardless of mode
@@ -101,7 +104,10 @@ const DEFAULT_MODE_SETTINGS: ModeSettings = {
   rightMargin: 10,
   isLocked: false,
   chartHeight: 400,
-  showVolumePane: true
+  showVolumePane: true,
+  cdPercentageMode: true,
+  cdIndividualMode: false,
+  paneHeights: [300, 100] // Default: main pane 300px, CD pane 100px
 };
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
