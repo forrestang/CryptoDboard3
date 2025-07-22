@@ -8,6 +8,7 @@ import {
   setComponentStates 
 } from '../lib/localStorage';
 import { copyToClipboard } from '../lib/clipboard';
+import { COLOR_PALETTE } from '../lib/colorUtils';
 
 interface ChartListProps {
   tokens: ChartListItem[];
@@ -19,14 +20,6 @@ interface ChartListProps {
   onClearAll: () => void;
 }
 
-const COLOR_PALETTE = [
-  '#ff0000', '#ff8000', '#ffff00', '#80ff00', '#00ff00', '#00ff80', '#00ffff', '#0080ff', '#0000ff',
-  '#8000ff', '#ff00ff', '#ff0080', '#800000', '#808000', '#008000', '#008080', '#000080', '#800080',
-  '#808080', '#c0c0c0', '#ff4444', '#ff8844', '#ffff44', '#88ff44', '#44ff44', '#44ff88', '#44ffff',
-  '#4488ff', '#4444ff', '#8844ff', '#ff44ff', '#ff4488', '#ffffff', '#ffaaaa', '#ffddaa', '#ffffaa',
-  '#aaffaa', '#aaffff', '#aaaaff', '#ddaaff', '#ffaaff', '#dddddd', '#ff6666', '#ffaa66', '#ffff66',
-  '#66ff66', '#66ffff', '#6666ff', '#aa66ff', '#ff66aa', '#555555', '#ff9999', '#ffcc99', '#00cc99'
-];
 
 export default function ChartList({
   tokens,
@@ -530,10 +523,10 @@ export default function ChartList({
             style={{
               left: colorPickerPosition.x,
               top: colorPickerPosition.y,
-              width: '182px' // 166px + 16px padding
+              width: '148px' // 132px + 16px padding
             }}
           >
-            <div className="grid grid-cols-9 gap-0" style={{ width: '166px' }}>
+            <div className="grid grid-cols-6 gap-0" style={{ width: '132px' }}>
               {COLOR_PALETTE.map((color, index) => (
                 <button
                   key={`${color}-${index}`}

@@ -3,12 +3,9 @@ import { type ChartListItem } from './types';
 
 // Color palette for token assignment
 export const COLOR_PALETTE = [
-  '#ff0000', '#ff8000', '#ffff00', '#80ff00', '#00ff00', '#00ff80', '#00ffff', '#0080ff', '#0000ff',
-  '#8000ff', '#ff00ff', '#ff0080', '#800000', '#808000', '#008000', '#008080', '#000080', '#800080',
-  '#808080', '#c0c0c0', '#ff4444', '#ff8844', '#ffff44', '#88ff44', '#44ff44', '#44ff88', '#44ffff',
-  '#4488ff', '#4444ff', '#8844ff', '#ff44ff', '#ff4488', '#ffffff', '#ffaaaa', '#ffddaa', '#ffffaa',
-  '#aaffaa', '#aaffff', '#aaaaff', '#ddaaff', '#ffaaff', '#dddddd', '#ff6666', '#ffaa66', '#ffff66',
-  '#66ff66', '#66ffff', '#6666ff', '#aa66ff', '#ff66aa', '#555555', '#ff9999', '#ffcc99', '#00cc99'
+  '#800000', '#ff0000', '#ff6666', '#ffaaaa', '#ff8000', '#ffcc99', '#808000', '#ffff00',
+  '#00ff00', '#00cc99', '#008000', '#00ffff', '#0000ff', '#0080ff', '#4444ff', '#6666ff',
+  '#aaaaff', '#800080', '#8000ff', '#aa66ff', '#ff00ff', '#ff66aa', '#555555', '#ffffff'
 ];
 
 // Get the next available color that maximizes distance from existing colors
